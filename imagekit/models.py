@@ -274,6 +274,8 @@ class ImageSpecFile(_ImageSpecFileMixin, ImageFieldFile):
                     new_filename = os.path.join(dir_name, filename)
 
             self._name = new_filename
+        else:
+            self._name = name
         return self._name
 
     @name.setter
