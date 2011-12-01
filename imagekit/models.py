@@ -328,7 +328,7 @@ def _post_save_handler(sender, instance=None, created=False, raw=False, **kwargs
         return
     spec_files = get_spec_files(instance)
     for spec_file in spec_files:
-        if not created:
+        if not created and spec_file.field.pre_cache: # only delete if it will be immediately recreated
             spec_file.delete(save=False)
         if spec_file.field.pre_cache:
             spec_file.generate(False)
