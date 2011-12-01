@@ -256,7 +256,7 @@ class ImageSpecFile(_ImageSpecFileMixin, ImageFieldFile):
 
         """
         name = getattr(self, '_name', None)
-        if not name and self.source_file:
+        if not name and getattr(self, "source_file", None): # assume nothing
             filename = self.source_file.name
             new_filename = None
             if filename:
