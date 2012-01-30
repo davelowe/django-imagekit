@@ -92,12 +92,10 @@ class ImageSpec(_ImageSpecMixin):
 
         # Connect to the signals only once for this class.
         uid = '%s.%s' % (cls.__module__, cls.__name__)
-        post_save.connect(_post_save_handler,
-            sender=cls,
-            dispatch_uid='%s_save' % uid)
-        post_delete.connect(_post_delete_handler,
-            sender=cls,
-            dispatch_uid='%s.delete' % uid)
+        post_save.connect(_post_save_handler, sender=cls,
+                dispatch_uid='%s_save' % uid)
+        post_delete.connect(_post_delete_handler, sender=cls,
+                dispatch_uid='%s.delete' % uid)
 
 
 def _get_suggested_extension(name, format):
@@ -156,11 +154,32 @@ class _ImageSpecFileMixin(object):
 
 
 class ImageSpecFile(_ImageSpecFileMixin, ImageFieldFile):
-    def __init__(self, instance, field, attname, source_file):
+    def __init__(self, instance, field, attname):
         ImageFieldFile.__init__(self, instance, field, None)
-        self.storage = field.storage or source_file.storage
         self.attname = attname
-        self.source_file = source_file
+        self.storage = self.field.storage or self.source_file.storage
+
+    @property
+    def source_file(self):
+        field_name = getattr(self.field, 'image_field', None)
+        if field_name:
+            field_file = getattr(self.instance, field_name)
+        else:
+            image_fields = [getattr(self.instance, f.attname) for f in \
+                    self.instance.__class__._meta.fields if \
+                    isinstance(f, models.ImageField)]
+            if len(image_fields) == 0:
+                raise Exception('{0} does not define any ImageFields, so your '
+                        '{1} ImageSpec has no image to act on.'.format(
+                        self.instance.__class__.__name__, self.attname))
+            elif len(image_fields) > 1:
+                raise Exception('{0} defines multiple ImageFields, but you have '
+                        'not specified an image_field for your {1} '
+                        'ImageSpec.'.format(self.instance.__class__.__name__,
+                        self.attname))
+            else:
+                field_file = image_fields[0]
+        return field_file
 
     def _require_file(self):
         if not self.source_file:
@@ -219,10 +238,11 @@ class ImageSpecFile(_ImageSpecFileMixin, ImageFieldFile):
             self.close()
             del self.file
 
-        try:
-            self.storage.delete(self.name)
-        except (NotImplementedError, IOError):
-            pass
+        if self.name and self.storage.exists(self.name):
+            try:
+                self.storage.delete(self.name)
+            except NotImplementedError:
+                pass
 
         # Delete the filesize cache.
         if hasattr(self, '_size'):
@@ -292,33 +312,11 @@ class _ImageSpecDescriptor(object):
         self.attname = attname
         self.field = field
 
-    def _get_image_field_file(self, instance):
-        field_name = getattr(self.field, 'image_field', None)
-        if field_name:
-            field = getattr(instance, field_name)
-        else:
-            image_fields = [getattr(instance, f.attname) for f in \
-                    instance.__class__._meta.fields if \
-                    isinstance(f, models.ImageField)]
-            if len(image_fields) == 0:
-                raise Exception('{0} does not define any ImageFields, so your '
-                        '{1} ImageSpec has no image to act on.'.format(
-                        instance.__class__.__name__, self.attname))
-            elif len(image_fields) > 1:
-                raise Exception('{0} defines multiple ImageFields, but you have '
-                        'not specified an image_field for your {1} '
-                        'ImageSpec.'.format(instance.__class__.__name__,
-                        self.attname))
-            else:
-                field = image_fields[0]
-        return field
-
     def __get__(self, instance, owner):
         if instance is None:
             return self.field
         else:
-            img_spec_file = ImageSpecFile(instance, self.field,
-                self.attname, self._get_image_field_file(instance))
+            img_spec_file = ImageSpecFile(instance, self.field, self.attname)
             setattr(instance, self.attname, img_spec_file)
             return img_spec_file
 
